@@ -94,9 +94,9 @@ class VmwareCollector():
 
         # label names and ammount will be needed later to insert labels from custom attributes
         self._labelNames = {
-            'vms': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name'],
-            'vm_perf': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name'],
-            'vmguests': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name'],
+            'vms': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address'],
+            'vm_perf': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address'],
+            'vmguests': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name', 'ip_address'],
             'snapshots': ['vm_name', 'ds_name', 'host_name', 'dc_name', 'cluster_name'],
             'datastores': ['ds_name', 'dc_name', 'ds_cluster'],
             'hosts': ['host_name', 'dc_name', 'cluster_name'],
@@ -145,6 +145,14 @@ class VmwareCollector():
                 'vmware_vm_template',
                 'VMWare VM Template (true / false)',
                 labels=self._labelNames['vms']),
+            'vmware_vm_storage_committed': GaugeMetricFamily(
+                'vmware_vm_storage_committed',
+                'VMWare VM committed storage',
+                labels=self._labelNames['vms']),
+            'vmware_vm_storage_uncommitted': GaugeMetricFamily(
+                'vmware_vm_storage_uncommitted',
+                'VMWare VM uncommitted storage',
+                labels=self._labelNames['vms']),
         }
         metric_list['vmguests'] = {
             'vmware_vm_guest_disk_free': GaugeMetricFamily(
@@ -155,6 +163,10 @@ class VmwareCollector():
                 'vmware_vm_guest_disk_capacity',
                 'Disk capacity metric per partition',
                 labels=self._labelNames['vmguests'] + ['partition', ]),
+            'vmware_vm_guest_os': GaugeMetricFamily(
+                'vmware_vm_guest_os',
+                'Guest operating system name configured on the virtual machine',
+                labels=self._labelNames['vmguests'] + ['os', ]),
             'vmware_vm_guest_tools_running_status': GaugeMetricFamily(
                 'vmware_vm_guest_tools_running_status',
                 'VM tools running status',
@@ -748,14 +760,18 @@ class VmwareCollector():
                 'summary.config.memorySizeMB',
                 'runtime.maxCpuUsage',
                 'summary.config.template',
+                'summary.storage.committed',
+                'summary.storage.uncommitted',
             ])
 
         if self.collect_only['vmguests'] is True:
             properties.extend([
                 'guest.disk',
+                'guest.guestFullName',
                 'guest.toolsStatus',
                 'guest.toolsVersion',
                 'guest.toolsVersionStatus2',
+                'guest.ipAddress',
             ])
 
         if self.collect_only['snapshots'] is True:
@@ -1103,6 +1119,9 @@ class VmwareCollector():
 
             if host_moid in host_labels:
                 labels[moid] = labels[moid] + host_labels[host_moid]
+
+            if 'guest.ipAddress' in row:
+                labels[moid] = labels[moid] + [row['guest.ipAddress']]
 
             """
             this code was in vm_inventory before
@@ -1592,6 +1611,17 @@ class VmwareCollector():
                     metrics['vmware_vm_guest_disk_capacity'].add_metric(
                         labels + [disk.diskPath], disk.capacity
                     )
+
+            if 'guest.guestFullName' in row:
+                metrics['vmware_vm_guest_os'].add_metric(
+                    labels + [row['guest.guestFullName']],1
+                )
+
+            if 'summary.storage.committed' in row:
+                metrics['vmware_vm_storage_committed'].add_metric(labels, row['summary.storage.committed'])
+
+            if 'summary.storage.uncommitted' in row:
+                metrics['vmware_vm_storage_uncommitted'].add_metric(labels, row['summary.storage.uncommitted'])
 
             if 'guest.toolsStatus' in row:
                 metrics['vmware_vm_guest_tools_running_status'].add_metric(
